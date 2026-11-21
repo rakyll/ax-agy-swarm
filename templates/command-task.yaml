@@ -1,0 +1,24 @@
+# A deterministic command in a sandbox. Copy to tasks/<run>/<name>.yaml,
+# replace every <...>, then `bin/axs submit tasks/<run>/<name>.yaml`.
+#
+# Omit spec.profile to start warm from the workspace's snapshot; set it only if
+# you need a different image (that cold-boots the workspace setup).
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: <run>-<worker>-<slug>
+  atespace: default
+  labels:
+    swarm-run: <run>
+    swarm-worker: <worker>
+spec:
+  profile:
+    image: "python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b"
+    resources:
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+  workspace:
+    name: <workspace>
+  commands: ["sh", "-c", "<command>"]
+  debug: true # lets `ax ssh` inspect the sandbox

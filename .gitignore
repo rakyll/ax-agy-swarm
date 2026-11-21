@@ -1,0 +1,7 @@
+# per-run artifacts
+*.log
+tasks/*
+!tasks/.gitkeep
+
+# local agent settings
+.claude/settings.local.json

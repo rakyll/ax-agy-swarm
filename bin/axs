@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""axs: thin helpers over the `ax` CLI for antigravity swarm members.
+
+  axs submit <manifest.yaml>...      apply manifests, then resume every Task in them
+  axs wait [--timeout S] <task>...   block until each task is terminal; JSON line per task
+  axs result <task>...               JSON line per task with state/result/output (no waiting)
+  axs ls [prefix]                    JSON line per task whose name starts with prefix
+
+Output is JSON lines so it can be pasted onto the swarm board or piped into jq.
+`wait` exits 1 if any task did not succeed, 2 on timeout.
+"""
+import json
+import subprocess
+import sys
+import time
+
+import yaml
+
+TERMINAL = {"TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELLED"}
+# States where the task will not progress without someone acting on it.
+STUCK = {"TASK_STATE_REQUIRES_ACTION", "TASK_STATE_SUSPENDED"}
+OUTPUT_LIMIT = 4000
+
+
+def ax(*args, check=True):
+    p = subprocess.run(["ax", *args], capture_output=True, text=True)
+    if check and p.returncode != 0:
+        sys.exit(f"ax {' '.join(args)} failed: {p.stderr.strip() or p.stdout.strip()}")
+    return p
+
+
+def get_task(name):
+    p = ax("get", "task", name, check=False)
+    if p.returncode != 0:
+        return None
+    return yaml.safe_load(p.stdout)
+
+
+def summarize(name, task):
+    if task is None:
+        return {"task": name, "state": "NOT_FOUND"}
+    st = task.get("status") or {}
+    outcome = st.get("outcome") or {}
+    out = outcome.get("output") or ""
+    if len(out) > OUTPUT_LIMIT:
+        out = "...(truncated)...\n" + out[-OUTPUT_LIMIT:]
+    ready = next((c for c in st.get("conditions") or [] if c.get("type") == "Ready"), {})
+    return {
+        "task": name,
+        "state": st.get("state", "TASK_STATE_UNSPECIFIED"),
+        "result": outcome.get("result"),
+        "exitCode": outcome.get("exitCode"),
+        "reason": ready.get("reason"),
+        "message": ready.get("message"),
+        "output": out,
+    }
+
+
+def emit(obj):
+    print(json.dumps(obj), flush=True)
+
+
+def cmd_submit(paths):
+    for path in paths:
+        with open(path) as f:
+            docs = [d for d in yaml.safe_load_all(f) if d]
+        ax("apply", "-f", path)
+        for d in docs:
+            if d.get("kind") != "Task":
+                continue
+            name = d["metadata"]["name"]
+            # resume blocks until Ready; a slow first workspace init can outlast
+            # the CLI, but the task keeps coming up, so don't treat that as fatal.
+            p = ax("resume", "task", name, check=False)
+            emit({"task": name, "submitted": True,
+                  "resume": "ok" if p.returncode == 0 else p.stderr.strip()})
+
+
+def cmd_wait(args):
+    timeout = 1800.0
+    if args[:1] == ["--timeout"]:
+        timeout, args = float(args[1]), args[2:]
+    pending, failed = list(args), False
+    deadline = time.time() + timeout
+    while pending:
+        for name in list(pending):
+            s = summarize(name, get_task(name))
+            if s["state"] in TERMINAL or s["state"] in STUCK or s["state"] == "NOT_FOUND":
+                emit(s)
+                pending.remove(name)
+                failed |= s["result"] != "TASK_RESULT_SUCCEEDED"
+        if pending and time.time() > deadline:
+            for name in pending:
+                emit({**summarize(name, get_task(name)), "timeout": True})
+            sys.exit(2)
+        if pending:
+            time.sleep(5)
+    sys.exit(1 if failed else 0)
+
+
+def cmd_result(names):
+    for name in names:
+        emit(summarize(name, get_task(name)))
+
+
+def cmd_ls(args):
+    prefix = args[0] if args else ""
+    lines = ax("get", "tasks").stdout.splitlines()
+    if not lines:
+        return
+    header = lines[0].split()
+    for line in lines[1:]:
+        row = dict(zip(header, line.split()))
+        if row.get("NAME", "").startswith(prefix):
+            emit({k.lower(): v for k, v in row.items()})
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return
+    cmd, rest = sys.argv[1], sys.argv[2:]
+    fn = {"submit": cmd_submit, "wait": cmd_wait, "result": cmd_result, "ls": cmd_ls}.get(cmd)
+    if fn is None:
+        sys.exit(f"unknown command {cmd!r}; see axs --help")
+    fn(rest)
+
+
+if __name__ == "__main__":
+    main()
