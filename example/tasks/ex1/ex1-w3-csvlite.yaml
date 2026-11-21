@@ -1,0 +1,45 @@
+# Agent task: one module of textkit. Each task gets its own copy of /workspace
+# seeded from the snapshot, so fixes in different tasks never see each other;
+# example/mkverify combines the diffs from each task's output into the verify task.
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: ex1-w3-csvlite
+  atespace: default
+  labels:
+    swarm-run: ex1
+    swarm-worker: w3
+spec:
+  # Same image and limits as ex-textkit-ws, so the task starts warm.
+  profile:
+    image: "ghcr.io/agentexecutor/antigravity@sha256:0ccd91d03f996c375d6d391dc20106102187f15210a0016212b6721cd8044078"
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+  workspace:
+    name: ex-textkit-ws
+  gateway:
+    name: hero-demo-gw
+  env:
+    - name: AGY_RUNTIME_INSTALL
+      value: "true"
+    - name: GEMINI_API_KEY
+      value: placeholder # replaced outside the sandbox by the gateway
+  sessionId: ex1
+  goal:
+    text: |
+      In /workspace/textkit (a git repo), parse_line() in textkit/csvlite.py
+      passes its tests, but users report it is wrong on some inputs. Treat the
+      docstring as the spec. Add edge-case tests to tests/test_csvlite.py until
+      you have found every way the code violates the spec, then fix
+      textkit/csvlite.py so all tests pass. Edit only those two files.
+      Run the whole suite before you finish; it must pass, apart from failures
+      in modules other than csvlite, which other people are working on:
+        cd /workspace/textkit && python3 -m unittest -v
+      Your final reply is the task's only output, so make it a short report:
+      what you changed or found (one line each), the test summary line, then
+      the full output of
+        git -C /workspace/textkit add -A && git -C /workspace/textkit diff --cached
+      in a ```diff fenced block.
+  debug: true

@@ -1,5 +1,5 @@
-# Baseline: run the whole suite once, before any fixes. Expected to FAIL with
-# 5 failures (2 slug, 2 words, 1 roman); that output is what the plan is built from.
+# Baseline: run the public suite once, before any work. Expected to FAIL with
+# 3 errors, all from the wrap stub; csvlite passes even though it is wrong.
 apiVersion: ax.io/v1alpha1
 kind: Task
 metadata:
