@@ -1,0 +1,164 @@
+# Workspace for the end-to-end example: a tiny Python package, textkit, with
+# three independent pieces of work, one per module:
+#
+#   wrap.py     a stub to implement from the spec in its docstring
+#   roman.py    to_roman works; from_roman (strict parsing) is missing
+#   csvlite.py  passes its tests but violates its spec in three ways
+#
+# Apply once before starting the swarm (the first apply waits for the pre-warm):
+#   ax apply -f example/workspace.yaml
+#
+# The profile matches templates/agent-task.yaml, so agent tasks start warm from
+# this workspace's snapshot. The image also has python3 and git, so command
+# tasks can omit spec.profile and start warm too. textkit is committed as a git
+# repo so agents can report a diff and the verify task can `git apply` it.
+#
+# Acceptance tests live outside the workspace (example/acceptance_test.py) so
+# agents cannot see them; only the verify task runs them.
+apiVersion: ax.io/v1alpha1
+kind: Workspace
+metadata:
+  name: ex-textkit-ws
+  atespace: default
+spec:
+  profile:
+    image: "ghcr.io/agentexecutor/antigravity@sha256:0ccd91d03f996c375d6d391dc20106102187f15210a0016212b6721cd8044078"
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+  setup:
+    files:
+      - path: textkit/.gitignore
+        content: |
+          __pycache__/
+      - path: textkit/textkit/__init__.py
+        content: ""
+      - path: textkit/textkit/wrap.py
+        content: |
+          def wrap(text, width):
+              """Greedy word wrap. Returns a list of lines.
+
+              - Words are separated by any whitespace; words on a line are joined
+                by single spaces.
+              - Each line is at most `width` characters, except that a word longer
+                than `width` goes on a line of its own, unbroken.
+              - Paragraphs are separated by one or more blank (empty or
+                whitespace-only) lines. Each paragraph is wrapped on its own, and
+                paragraphs are separated by exactly one "" in the output.
+              - Text with no words returns [].
+              - width < 1 raises ValueError.
+              """
+              raise NotImplementedError
+      - path: textkit/textkit/roman.py
+        content: |
+          NUMERALS = [
+              (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+              (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+              (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+          ]
+
+
+          def to_roman(n):
+              """Canonical Roman numeral for 1 <= n <= 3999; ValueError otherwise."""
+              if not isinstance(n, int) or not 1 <= n <= 3999:
+                  raise ValueError(f"out of range: {n!r}")
+              out = ""
+              for value, sym in NUMERALS:
+                  while n >= value:
+                      out += sym
+                      n -= value
+              return out
+
+
+          def from_roman(s):
+              """Inverse of to_roman.
+
+              Accepts only canonical numerals, exactly as to_roman writes them
+              (uppercase, 1..3999). Anything else, such as "IIII", "IC", "VX",
+              "MMMM", "iv" or "", raises ValueError.
+              """
+              raise NotImplementedError
+      - path: textkit/textkit/csvlite.py
+        content: |
+          def parse_line(line):
+              '''Split one CSV line into fields.
+
+              - Fields are separated by commas. "a,,b" has an empty middle field,
+                "a,b," ends with an empty field, and "" is one empty field: [""].
+              - A field may be wrapped in double quotes. Inside quotes, commas are
+                literal and "" stands for one literal double quote:
+                '"say ""hi""",x' -> ['say "hi"', 'x'].
+              - An unterminated quoted field raises ValueError.
+              '''
+              fields, cur, quoted = [], "", False
+              for c in line:
+                  if quoted:
+                      if c == '"':
+                          quoted = False
+                      else:
+                          cur += c
+                  elif c == '"':
+                      quoted = True
+                  elif c == ",":
+                      fields.append(cur)
+                      cur = ""
+                  else:
+                      cur += c
+              if cur:
+                  fields.append(cur)
+              return fields
+      - path: textkit/tests/__init__.py
+        content: ""
+      - path: textkit/tests/test_wrap.py
+        content: |
+          import unittest
+
+          from textkit.wrap import wrap
+
+
+          class TestWrap(unittest.TestCase):
+              def test_basic(self):
+                  self.assertEqual(
+                      wrap("the quick brown fox jumps over the lazy dog", 10),
+                      ["the quick", "brown fox", "jumps over", "the lazy", "dog"],
+                  )
+
+              def test_long_word(self):
+                  self.assertEqual(wrap("a supercalifragilistic b", 5), ["a", "supercalifragilistic", "b"])
+
+              def test_bad_width(self):
+                  with self.assertRaises(ValueError):
+                      wrap("x", 0)
+      - path: textkit/tests/test_roman.py
+        content: |
+          import unittest
+
+          from textkit.roman import to_roman
+
+
+          class TestToRoman(unittest.TestCase):
+              def test_values(self):
+                  self.assertEqual(to_roman(4), "IV")
+                  self.assertEqual(to_roman(1994), "MCMXCIV")
+                  self.assertEqual(to_roman(3999), "MMMCMXCIX")
+
+              def test_range(self):
+                  for bad in (0, 4000, -1):
+                      with self.assertRaises(ValueError):
+                          to_roman(bad)
+      - path: textkit/tests/test_csvlite.py
+        content: |
+          import unittest
+
+          from textkit.csvlite import parse_line
+
+
+          class TestParseLine(unittest.TestCase):
+              def test_plain(self):
+                  self.assertEqual(parse_line("a,b,c"), ["a", "b", "c"])
+
+              def test_quoted_comma(self):
+                  self.assertEqual(parse_line('"x,y",z'), ["x,y", "z"])
+    commands:
+      - cd textkit && git init -q && git add -A && git -c user.name=example -c user.email=example@example.com commit -qm seed

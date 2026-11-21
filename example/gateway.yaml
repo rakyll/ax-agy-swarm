@@ -1,0 +1,29 @@
+# Gateway for the example's agent tasks, copied from ~/ax/hack/hero-demo/gateway.yaml.
+# It lets the sandboxed agent install agy and reach Gemini, injecting the API
+# key outside the sandbox so it never appears in a manifest. Re-applying it on a
+# cluster that already has hero-demo-gw is a no-op.
+#
+# One-time cluster setup for the key (cluster admin):
+#   kubectl -n ax-system create secret generic hero-demo-gemini --from-literal=api-key="AIzaSy..."
+#   kubectl -n ax-system label secret hero-demo-gemini ax.io/credential=true
+# and grant atespace default the ax-system namespace in Substrate's
+# k8s-credential-provider-namespace-policy ConfigMap (ate-system); without the
+# grant, Gemini requests get a 403. See "Injecting credentials" in
+# ~/ax/docs/manifests.md.
+apiVersion: ax.io/v1alpha1
+kind: Gateway
+metadata:
+  name: hero-demo-gw
+  atespace: default
+spec:
+  egress:
+    - tlsPassthrough:
+        hostnames: ["storage.googleapis.com"] # runtime agy install
+        ports:
+          numbers: [443]
+    - https:
+        hostnames: ["generativelanguage.googleapis.com"]
+        effects:
+          replaceHeaders:
+            - header: x-goog-api-key
+              credentialUri: "ate-secret://k8s.io/default/ax-system/hero-demo-gemini/api-key"

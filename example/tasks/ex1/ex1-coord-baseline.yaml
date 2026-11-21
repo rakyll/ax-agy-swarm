@@ -1,0 +1,16 @@
+# Baseline: run the public suite once, before any work. Expected to FAIL with
+# 3 errors, all from the wrap stub; csvlite passes even though it is wrong.
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: ex1-coord-baseline
+  atespace: default
+  labels:
+    swarm-run: ex1
+    swarm-worker: coord
+spec:
+  # No profile: starts warm from ex-textkit-ws's snapshot.
+  workspace:
+    name: ex-textkit-ws
+  commands: ["sh", "-c", "cd textkit && python3 -m unittest -v 2>&1"]
+  debug: true
