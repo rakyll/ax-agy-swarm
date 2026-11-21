@@ -5,3 +5,4 @@ tasks/*
 
 # local agent settings
 .claude/settings.local.json
+bin/
