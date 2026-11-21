@@ -1,0 +1,39 @@
+# Agent task: fix one module. Each task gets its own copy of /workspace seeded
+# from the snapshot, so fixes in different tasks never see each other; the
+# coordinator combines the diffs from each task's output in ex1-coord-verify.
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: ex1-w2-words
+  atespace: default
+  labels:
+    swarm-run: ex1
+    swarm-worker: w2
+spec:
+  # Same image and limits as ex-textkit-ws, so the task starts warm.
+  profile:
+    image: "ghcr.io/agentexecutor/antigravity@sha256:0ccd91d03f996c375d6d391dc20106102187f15210a0016212b6721cd8044078"
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+  workspace:
+    name: ex-textkit-ws
+  gateway:
+    name: hero-demo-gw
+  env:
+    - name: AGY_RUNTIME_INSTALL
+      value: "true"
+    - name: GEMINI_API_KEY
+      value: placeholder # replaced outside the sandbox by the gateway
+  sessionId: ex1
+  goal:
+    text: |
+      In /workspace/textkit (a git repo), word_count in textkit/words.py splits on single spaces only, so tabs, newlines, repeated spaces and the empty string are miscounted ("" should give 0).
+      Fix it by editing only textkit/words.py. Do not change the tests.
+      Verify with:
+        cd /workspace/textkit && python3 -m unittest tests.test_words -v
+      Your final reply is the task's only output, so make it a short report:
+      one line on the cause, the test result, then the full output of
+      `git -C /workspace/textkit diff` in a ```diff fenced block.
+  debug: true

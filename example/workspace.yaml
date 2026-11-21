@@ -1,0 +1,99 @@
+# Workspace for the end-to-end example: a tiny Python package, textkit, with
+# three independent bugs, one per module, and a unittest suite that catches them.
+#
+# Apply once before starting the swarm (the first apply waits for the pre-warm):
+#   ax apply -f example/workspace.yaml
+#
+# The profile matches templates/agent-task.yaml, so agent tasks start warm from
+# this workspace's snapshot. The image also has python3 and git, so command
+# tasks can omit spec.profile and start warm too. textkit is committed as a git
+# repo so agents can report `git diff` and the verify task can `git apply` it.
+apiVersion: ax.io/v1alpha1
+kind: Workspace
+metadata:
+  name: ex-textkit-ws
+  atespace: default
+spec:
+  profile:
+    image: "ghcr.io/agentexecutor/antigravity@sha256:0ccd91d03f996c375d6d391dc20106102187f15210a0016212b6721cd8044078"
+    resources:
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+  setup:
+    files:
+      - path: textkit/textkit/__init__.py
+        content: ""
+      - path: textkit/textkit/slug.py
+        content: |
+          import re
+
+
+          def slugify(text):
+              """Lowercase, replace runs of non-alphanumerics with "-", trim "-"."""
+              return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")
+      - path: textkit/textkit/words.py
+        content: |
+          def word_count(text):
+              """Number of whitespace-separated words in text."""
+              return len(text.split(" "))
+      - path: textkit/textkit/roman.py
+        content: |
+          NUMERALS = [(1000, "M"), (500, "D"), (100, "C"), (50, "L"), (10, "X"), (5, "V"), (1, "I")]
+
+
+          def to_roman(n):
+              """Roman numeral for 1 <= n <= 3999, using subtractive notation (IV, IX, XL, ...)."""
+              out = ""
+              for value, sym in NUMERALS:
+                  while n >= value:
+                      out += sym
+                      n -= value
+              return out
+      - path: textkit/tests/__init__.py
+        content: ""
+      - path: textkit/tests/test_slug.py
+        content: |
+          import unittest
+
+          from textkit.slug import slugify
+
+
+          class TestSlugify(unittest.TestCase):
+              def test_basic(self):
+                  self.assertEqual(slugify("Hello, World!"), "hello-world")
+
+              def test_trim(self):
+                  self.assertEqual(slugify("  --AX Tasks--  "), "ax-tasks")
+      - path: textkit/tests/test_words.py
+        content: |
+          import unittest
+
+          from textkit.words import word_count
+
+
+          class TestWordCount(unittest.TestCase):
+              def test_single_spaces(self):
+                  self.assertEqual(word_count("one two three"), 3)
+
+              def test_messy_whitespace(self):
+                  self.assertEqual(word_count("  one\ttwo\n\nthree  "), 3)
+
+              def test_empty(self):
+                  self.assertEqual(word_count(""), 0)
+      - path: textkit/tests/test_roman.py
+        content: |
+          import unittest
+
+          from textkit.roman import to_roman
+
+
+          class TestRoman(unittest.TestCase):
+              def test_additive(self):
+                  self.assertEqual(to_roman(2026), "MMXXVI")
+
+              def test_subtractive(self):
+                  self.assertEqual(to_roman(4), "IV")
+                  self.assertEqual(to_roman(1994), "MCMXCIV")
+    commands:
+      - cd textkit && git init -q && git add -A && git -c user.name=example -c user.email=example@example.com commit -qm seed

@@ -1,0 +1,54 @@
+# Verify: apply every agent's diff (copied from the ```diff block in each
+# task's output) to a fresh copy of the workspace and run the whole suite.
+# Done when this task SUCCEEDS with all 7 tests passing.
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: ex1-coord-verify
+  atespace: default
+  labels:
+    swarm-run: ex1
+    swarm-worker: coord
+spec:
+  workspace:
+    name: ex-textkit-ws
+  commands:
+    - sh
+    - -c
+    - |
+      set -e
+      cd textkit
+      git apply <<'PATCH'
+      diff --git a/textkit/slug.py b/textkit/slug.py
+      index 838ee50..4e1e6c3 100644
+      --- a/textkit/slug.py
+      +++ b/textkit/slug.py
+      @@ -3,4 +3,4 @@ import re
+       
+       def slugify(text):
+           """Lowercase, replace runs of non-alphanumerics with "-", trim "-"."""
+      -    return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")
+      +    return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()
+      diff --git a/textkit/words.py b/textkit/words.py
+      index 0a7511d..0cd8c64 100644
+      --- a/textkit/words.py
+      +++ b/textkit/words.py
+      @@ -1,3 +1,3 @@
+       def word_count(text):
+           """Number of whitespace-separated words in text."""
+      -    return len(text.split(" "))
+      +    return len(text.split())
+      diff --git a/textkit/roman.py b/textkit/roman.py
+      index 783dbd2..69be368 100644
+      --- a/textkit/roman.py
+      +++ b/textkit/roman.py
+      @@ -1,4 +1,4 @@
+      -NUMERALS = [(1000, "M"), (500, "D"), (100, "C"), (50, "L"), (10, "X"), (5, "V"), (1, "I")]
+      +NUMERALS = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")]
+       
+       
+       def to_roman(n):
+      PATCH
+      git diff --stat
+      python3 -m unittest -v 2>&1
+  debug: true

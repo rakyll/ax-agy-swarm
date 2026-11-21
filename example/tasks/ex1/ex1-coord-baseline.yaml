@@ -1,0 +1,16 @@
+# Baseline: run the whole suite once, before any fixes. Expected to FAIL with
+# 5 failures (2 slug, 2 words, 1 roman); that output is what the plan is built from.
+apiVersion: ax.io/v1alpha1
+kind: Task
+metadata:
+  name: ex1-coord-baseline
+  atespace: default
+  labels:
+    swarm-run: ex1
+    swarm-worker: coord
+spec:
+  # No profile: starts warm from ex-textkit-ws's snapshot.
+  workspace:
+    name: ex-textkit-ws
+  commands: ["sh", "-c", "cd textkit && python3 -m unittest -v 2>&1"]
+  debug: true
